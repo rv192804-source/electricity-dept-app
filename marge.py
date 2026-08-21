@@ -87,6 +87,10 @@ if st.session_state["active_mode"] == "URJAS":
                 {"title": "LT Name Transfer App", "keywords": ["lt name transfer", "name transfer"], "dc_col": "DC", "date_col": "AADHARNO"},
                 {"title": "LT Change Of Category", "keywords": ["lt change of category", "change of category"], "dc_col": "DC", "date_col": "DATEOFAPP"},
                 {"title": "Cabel Replacement APP", "keywords": ["cabel", "cable"], "dc_col": "DC", "date_col": "DATEOFAPP"},
+                {"title": "Transformer Fail App","keywords": ["transformer fail", "transformer", "fail app"],"dc_col": "DC","date_col": "DATEOFAPPLICATION"},
+                {"title": "Transformer Fail App", "keywords": ["transformer fail", "transformer", "fail app"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"},
+                {"title": "LT Line/Meter Shifting App", "keywords": ["lt line", "meter shifting", "line shifting", "shifting app"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"},
+                
             ]
 
             xls = pd.ExcelFile(uploaded_file)
