@@ -20,14 +20,13 @@ if "active_mode" not in st.session_state:
 st.sidebar.title("🎛️ PORTAL NAVIGATION")
 st.sidebar.markdown("---")
 
-# Direct Distinct Sidebar Buttons
 btn_urjas = st.sidebar.button(
     "⚡ URJAS PENDENCY PORTAL",
     use_container_width=True,
     type="primary" if st.session_state["active_mode"] == "URJAS" else "secondary"
 )
 
-st.sidebar.markdown("") # Spacing between buttons
+st.sidebar.markdown("")
 
 btn_merge = st.sidebar.button(
     "📊 MERGER & ZONE SPLITTER",
@@ -35,7 +34,6 @@ btn_merge = st.sidebar.button(
     type="primary" if st.session_state["active_mode"] == "MERGE" else "secondary"
 )
 
-# Switch State on Button Click
 if btn_urjas:
     st.session_state["active_mode"] = "URJAS"
     st.rerun()
@@ -66,6 +64,9 @@ if st.session_state["active_mode"] == "URJAS":
             target_date = pd.to_datetime(selected_date).normalize()
             formatted_date_str = target_date.strftime("%d/%m/%Y")
 
+            # -------------------------------------------------------------
+            # 👇 YAHAN AAP APNE HISAAB SE 1, 15 YA JITNE BHI ZONES CHAHEN LIKH SAKTI HAIN
+            # -------------------------------------------------------------
             zones = [
                 "ANNAPURNA",
                 "GUMASTA NAGAR",
@@ -75,7 +76,9 @@ if st.session_state["active_mode"] == "URJAS":
                 "RAU",
                 "SILICON CITY",
                 "Sirpur",
+                # Agar 15 zone karna ho toh baaki 7 zones ke naam yahan jod lein
             ]
+
             slabs = ["0 - 3 days", "4 - 6 days", "7 - 15 days", "16 - 30 days", "MORE THAN 30 DAYS"]
 
             sheet_configs = [
@@ -87,10 +90,8 @@ if st.session_state["active_mode"] == "URJAS":
                 {"title": "LT Name Transfer App", "keywords": ["lt name transfer", "name transfer"], "dc_col": "DC", "date_col": "AADHARNO"},
                 {"title": "LT Change Of Category", "keywords": ["lt change of category", "change of category"], "dc_col": "DC", "date_col": "DATEOFAPP"},
                 {"title": "Cabel Replacement APP", "keywords": ["cabel", "cable"], "dc_col": "DC", "date_col": "DATEOFAPP"},
-                {"title": "Transformer Fail App","keywords": ["transformer fail", "transformer", "fail app"],"dc_col": "DC","date_col": "DATEOFAPPLICATION"},
                 {"title": "Transformer Fail App", "keywords": ["transformer fail", "transformer", "fail app"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"},
-                {"title": "LT Line/Meter Shifting App", "keywords": ["lt line", "meter shifting", "line shifting", "shifting app"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"},
-                
+                {"title": "LT Line/Meter Shifting App", "keywords": ["lt line", "meter shifting", "line shifting", "shifting app"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"}
             ]
 
             xls = pd.ExcelFile(uploaded_file)
@@ -105,18 +106,14 @@ if st.session_state["active_mode"] == "URJAS":
             fill_yellow = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
             thin_border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
 
+            # Dynamic Zone Matching Function
             def clean_zone(z):
                 if pd.isna(z):
                     return "OTHER"
                 z_str = str(z).strip().upper()
-                if "ANNAPURNA" in z_str: return "ANNAPURNA"
-                if "GUMASTA" in z_str: return "GUMASTA NAGAR"
-                if "HAWA" in z_str or "BANGLA" in z_str: return "Hawa Bangla"
-                if "MOHALLA" in z_str or "RAJ MOHALLA" in z_str or "RAJMOHALLA" in z_str: return "RAJ MOHALLA"
-                if "RAJENDRA" in z_str: return "RAJENDRA NAGAR"
-                if "RAU" in z_str: return "RAU"
-                if "SILICON" in z_str: return "SILICON CITY"
-                if "SIRPUR" in z_str: return "Sirpur"
+                for target_z in zones:
+                    if target_z.upper() in z_str:
+                        return target_z
                 return "OTHER"
 
             def get_slab(days):
@@ -251,6 +248,8 @@ if st.session_state["active_mode"] == "URJAS":
             ws_time = wb.create_sheet(title="Time Wise Pendency")
             ws_time.views.sheetView[0].showGridLines = True
 
+            zone_spacing = len(zones) + 5  # Dynamic Spacing according to number of zones
+
             for idx, config in enumerate(sheet_configs):
                 df = processed_data_store.get(config["title"])
                 pvt = pd.DataFrame(0, index=zones, columns=slabs)
@@ -263,7 +262,7 @@ if st.session_state["active_mode"] == "URJAS":
                 row_group = idx // 2
 
                 start_col = 1 if col_side == 0 else 10
-                start_row = 1 + (row_group * 13)
+                start_row = 1 + (row_group * zone_spacing)
 
                 ws_time.merge_cells(start_row=start_row, start_column=start_col, end_row=start_row, end_column=start_col + 7)
                 t_cell = ws_time.cell(row=start_row, column=start_col, value=f"{config['title'].upper()} TIME WISE PENDENCY TILL ({formatted_date_str})")
@@ -515,6 +514,7 @@ else:
                         merged_df[zone_col] = merged_df[zone_col].astype(str).str.strip()
                         unique_zones = [z for z in merged_df[zone_col].unique() if z and z.lower() != "nan"]
 
+                        # Automatically creates separate sheets for ALL zones present in the merged file!
                         for z in sorted(unique_zones):
                             z_df = merged_df[merged_df[zone_col] == z].copy()
                             if not z_df.empty:
