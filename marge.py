@@ -15,7 +15,7 @@ if "active_mode" not in st.session_state:
     st.session_state["active_mode"] = "URJAS"
 
 # ==========================================
-# SIDEBAR - SEPARATE BUTTONS DISPLAY
+# SIDEBAR - NAVIGATION
 # ==========================================
 st.sidebar.title("🎛️ PORTAL NAVIGATION")
 st.sidebar.markdown("---")
@@ -286,7 +286,7 @@ else:
         accept_multiple_files=True,
     )
 
-    def process_and_clean_file(file):
+    def extract_pure_data(file, target_columns=None):
         xls = pd.ExcelFile(file)
         
         target_sheet = xls.sheet_names[0]
@@ -295,54 +295,68 @@ else:
                 target_sheet = s
                 break
 
-        # Raw read bina header ke
         df_raw = pd.read_excel(file, sheet_name=target_sheet, header=None)
 
-        # 1. Top 3-4 extra/blank rows hata kar actual Header Row dhundho
+        # 1. Top Title/Blank rows skip karke actual header row dhundo
         header_row_idx = 0
         for idx, row in df_raw.iterrows():
             row_values = row.dropna().astype(str).str.strip().tolist()
-            if len(row_values) > 2:  # Actual table header row
+            if len(row_values) > 2:
                 header_row_idx = idx
                 break
 
-        # 2. Skipping top unwanted title rows
         df = pd.read_excel(file, sheet_name=target_sheet, skiprows=header_row_idx)
 
-        # 3. Clean columns (Remove Unnamed & Standardize names to Uppercase)
+        # 2. Unnamed columns hatao aur column names ko clean uppercase karo
         df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed", na=False)]
         df.columns = [str(c).strip().upper() for c in df.columns]
 
-        # 4. Remove Bottom Total / Blank rows
+        # 3. Bottom Total / Grand Total / Blank Rows Safai
         if not df.empty:
             first_col = df.columns[0]
             df = df[~df[first_col].astype(str).str.contains(r"TOTAL|GRAND TOTAL|RECORD", case=False, na=False)]
             df = df.dropna(how="all")
 
-        df["SOURCE_FILE"] = file.name
+        # 4. Agar target columns structure defined hai toh columns fix kar do
+        if target_columns is not None:
+            # Match columns by order or assign exact standard names
+            if len(df.columns) == len(target_columns):
+                df.columns = target_columns
+            else:
+                df = df.reindex(columns=target_columns)
+
         return df
 
     if uploaded_files:
         combined_list = []
-        for file in uploaded_files:
+        master_columns = None
+
+        # Pehli file ka structure template ban jayega
+        for i, file in enumerate(uploaded_files):
             try:
-                cleaned_df = process_and_clean_file(file)
+                if i == 0:
+                    cleaned_df = extract_pure_data(file, target_columns=None)
+                    master_columns = list(cleaned_df.columns)  # Save Top Header Structure
+                else:
+                    cleaned_df = extract_pure_data(file, target_columns=master_columns)
+
+                cleaned_df["SOURCE_FILE"] = file.name
                 combined_list.append(cleaned_df)
             except Exception as e:
                 st.error(f"⚠️ Error reading file {file.name}: {e}")
 
         if combined_list:
-            # Vertical Concat (Ek ke niche ek data stacking)
+            # Pure Data Stacking (Bina duplicate headers ke ek ke niche ek)
             merged_df = pd.concat(combined_list, ignore_index=True, axis=0)
 
-            # Re-index S.No column
+            # Re-sequence Serial Number Column (1 to N)
             sno_col = next((c for c in merged_df.columns if "S.NO" in c or "SL.NO" in c or "S. NO" in c), None)
             if sno_col:
                 merged_df[sno_col] = range(1, len(merged_df) + 1)
 
-            st.success(f"✅ **Merged Successfully!** Total Records: **{len(merged_df):,}**")
+            st.success(f"✅ **Merged Successfully!** Single Header Dete Hue Total Records: **{len(merged_df):,}**")
 
-            # Zone Column detection for splitting
+            # Zone Column detection for sheet splitting
             zone_col = next((c for c in merged_df.columns if "ZONE" in c or "DC" in c), None)
 
             col1, col2 = st.columns(2)
