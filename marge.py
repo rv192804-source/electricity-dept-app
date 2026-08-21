@@ -286,9 +286,8 @@ else:
         accept_multiple_files=True,
     )
 
-    def extract_pure_data(file, target_columns=None):
+    def process_clean_file(file, master_cols=None):
         xls = pd.ExcelFile(file)
-        
         target_sheet = xls.sheet_names[0]
         for s in xls.sheet_names:
             if "data" in str(s).lower():
@@ -297,48 +296,53 @@ else:
 
         df_raw = pd.read_excel(file, sheet_name=target_sheet, header=None)
 
-        # 1. Top Title/Blank rows skip karke actual header row dhundo
+        # 1. Main Header Row find karo
         header_row_idx = 0
         for idx, row in df_raw.iterrows():
-            row_values = row.dropna().astype(str).str.strip().tolist()
-            if len(row_values) > 2:
+            row_vals = row.dropna().astype(str).str.strip().tolist()
+            if len(row_vals) > 2:
                 header_row_idx = idx
                 break
 
+        # 2. File read karo skiping top title rows
         df = pd.read_excel(file, sheet_name=target_sheet, skiprows=header_row_idx)
 
-        # 2. Unnamed columns hatao aur column names ko clean uppercase karo
+        # Unnamed columns hatao aur headers ko upper/clean karo
         df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed", na=False)]
         df.columns = [str(c).strip().upper() for c in df.columns]
 
-        # 3. Bottom Total / Grand Total / Blank Rows Safai
+        # 3. Filtering repetitive internal header rows (Jo screenshot me beech me 'Group No', 'Consumer' aa raha hai)
         if not df.empty:
             first_col = df.columns[0]
+            second_col = df.columns[1] if len(df.columns) > 1 else first_col
+
+            # Drop rows where data values repeat column header text
+            df = df[~df[first_col].astype(str).str.upper().str.contains("GROUP NO|CONSUMER|S.NO|SL.NO", na=False)]
+            df = df[~df[second_col].astype(str).str.upper().str.contains("GROUP NO|CONSUMER|NAME|ACCOUNT", na=False)]
+
+            # Total / Grand total rows hatao
             df = df[~df[first_col].astype(str).str.contains(r"TOTAL|GRAND TOTAL|RECORD", case=False, na=False)]
             df = df.dropna(how="all")
 
-        # 4. Agar target columns structure defined hai toh columns fix kar do
-        if target_columns is not None:
-            # Match columns by order or assign exact standard names
-            if len(df.columns) == len(target_columns):
-                df.columns = target_columns
+        if master_cols is not None:
+            if len(df.columns) == len(master_cols):
+                df.columns = master_cols
             else:
-                df = df.reindex(columns=target_columns)
+                df = df.reindex(columns=master_cols)
 
         return df
 
     if uploaded_files:
         combined_list = []
-        master_columns = None
+        master_headers = None
 
-        # Pehli file ka structure template ban jayega
         for i, file in enumerate(uploaded_files):
             try:
                 if i == 0:
-                    cleaned_df = extract_pure_data(file, target_columns=None)
-                    master_columns = list(cleaned_df.columns)  # Save Top Header Structure
+                    cleaned_df = process_clean_file(file)
+                    master_headers = list(cleaned_df.columns)
                 else:
-                    cleaned_df = extract_pure_data(file, target_columns=master_columns)
+                    cleaned_df = process_clean_file(file, master_cols=master_headers)
 
                 cleaned_df["SOURCE_FILE"] = file.name
                 combined_list.append(cleaned_df)
@@ -346,17 +350,15 @@ else:
                 st.error(f"⚠️ Error reading file {file.name}: {e}")
 
         if combined_list:
-            # Pure Data Stacking (Bina duplicate headers ke ek ke niche ek)
             merged_df = pd.concat(combined_list, ignore_index=True, axis=0)
 
-            # Re-sequence Serial Number Column (1 to N)
+            # Re-index Serial Number (1, 2, 3... N) continuously
             sno_col = next((c for c in merged_df.columns if "S.NO" in c or "SL.NO" in c or "S. NO" in c), None)
             if sno_col:
                 merged_df[sno_col] = range(1, len(merged_df) + 1)
 
-            st.success(f"✅ **Merged Successfully!** Single Header Dete Hue Total Records: **{len(merged_df):,}**")
+            st.success(f"✅ **Merged Successfully!** Repeat headers completely removed. Total Records: **{len(merged_df):,}**")
 
-            # Zone Column detection for sheet splitting
             zone_col = next((c for c in merged_df.columns if "ZONE" in c or "DC" in c), None)
 
             col1, col2 = st.columns(2)
