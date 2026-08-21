@@ -8,6 +8,43 @@ import streamlit as st
 
 st.set_page_config(page_title="Electricity Dept - Master Utility Portal", layout="wide")
 
+# =========================================================
+# FORCE HIDE ALL STREAMLIT FOOTERS, BADGES & TOOLBARS (CSS)
+# =========================================================
+hide_streamlit_icons = """
+    <style>
+    /* Hide Bottom Footer Toolbar completely */
+    div[data-testid="stStatusWidget"],
+    div[data-testid="stBottom"],
+    div[data-testid="stToolbar"],
+    div[data-testid="stDecoration"],
+    div[class*="viewerBadge"],
+    div[class*="stAppViewerBadge"],
+    .viewerBadge_container__1QSob,
+    footer,
+    #MainMenu,
+    header {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+
+    /* Target the new bottom bar specifically */
+    footer, [data-testid="stActionButtonIcon"], [data-testid="stHeader"] {
+        display: none !important;
+    }
+    
+    /* Remove extra space at bottom */
+    .stApp {
+        margin-bottom: 0px !important;
+        padding-bottom: 0px !important;
+    }
+    </style>
+"""
+st.markdown(hide_streamlit_icons, unsafe_allow_html=True)
+
 # ==========================================
 # SESSION STATE MANAGEMENT FOR MODE
 # ==========================================
