@@ -3,6 +3,7 @@ import io
 import re
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 import pandas as pd
 import streamlit as st
 
@@ -76,17 +77,18 @@ if st.session_state["active_mode"] == "URJAS":
             ]
             slabs = ["0 - 3 days", "4 - 6 days", "7 - 15 days", "16 - 30 days", "MORE THAN 30 DAYS"]
 
+            # Broadened keywords and column patterns for seamless sheet matching
             sheet_configs = [
-                {"title": "NSC LT Application", "keywords": ["nsc lt", "nsc"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"},
-                {"title": "LT Load Change", "keywords": ["lt load change", "load change"], "dc_col": "DCNAME", "date_col": "DATEOFAPP"},
-                {"title": "Meter Replacement App", "keywords": ["meter replacement"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"},
-                {"title": "Bill Correction App", "keywords": ["bill correction"], "dc_col": "DC", "date_col": "DATEOFAPP"},
-                {"title": "Permanent Disconnection App", "keywords": ["permanent disconnection"], "dc_col": "DESCRIPTION", "date_col": "DATEOFAPP"},
-                {"title": "LT Name Transfer App", "keywords": ["lt name transfer", "name transfer"], "dc_col": "DC", "date_col": "AADHARNO"},
-                {"title": "LT Change Of Category", "keywords": ["lt change of category", "change of category"], "dc_col": "DC", "date_col": "DATEOFAPP"},
-                {"title": "Cabel Replacement APP", "keywords": ["cabel", "cable"], "dc_col": "DC", "date_col": "DATEOFAPP"},
-                {"title": "Transformer Fail App", "keywords": ["transformer fail", "transformer", "fail app"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"},
-                {"title": "LT Line/Meter Shifting App", "keywords": ["lt line", "meter shifting", "line shifting", "shifting app"], "dc_col": "DC", "date_col": "DATEOFAPPLICATION"},
+                {"title": "NSC LT Application", "keywords": ["nsc lt", "nsc", "new service"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPPLICATION", "APP_DATE", "DATE"]},
+                {"title": "LT Load Change", "keywords": ["load change", "load_change", "lt load"], "dc_patterns": ["DCNAME", "DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "Meter Replacement App", "keywords": ["meter replacement", "meter_rep", "replacement"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
+                {"title": "Bill Correction App", "keywords": ["bill correction", "bill_corr", "correction"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "Permanent Disconnection App", "keywords": ["permanent disconnection", "disconnection", "perm_disc"], "dc_patterns": ["DESCRIPTION", "DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "LT Name Transfer App", "keywords": ["name transfer", "name_trans", "transfer"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["AADHARNO", "DATEOFAPP", "DATE"]},
+                {"title": "LT Change Of Category", "keywords": ["change of category", "category_change", "category"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "Cabel Replacement APP", "keywords": ["cabel", "cable", "cable_rep"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "Transformer Fail App", "keywords": ["transformer", "transformer fail", "tf_fail"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
+                {"title": "LT Line/Meter Shifting App", "keywords": ["shifting", "meter shifting", "line shifting"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
             ]
 
             xls = pd.ExcelFile(uploaded_file)
@@ -138,6 +140,14 @@ if st.session_state["active_mode"] == "URJAS":
                 if pd.isna(dt): dt = pd.to_datetime(val_str, errors="coerce", dayfirst=False)
                 return dt
 
+            def find_best_column(df, patterns):
+                cols = list(df.columns)
+                for pat in patterns:
+                    for col in cols:
+                        if pat.lower() in str(col).lower():
+                            return col
+                return cols[0] if cols else None
+
             ws_overall = wb.active
             ws_overall.title = "URJAS Pendency (Over all)"
             ws_overall.views.sheetView[0].showGridLines = True
@@ -145,36 +155,38 @@ if st.session_state["active_mode"] == "URJAS":
             overall_summary = pd.DataFrame(0, index=zones, columns=[s["title"] for s in sheet_configs])
             processed_data_store = {}
 
-            # Process data for all sheets
+            # Processing all sheets dynamically
             for config in sheet_configs:
                 matched = next((s for s in available_sheets if any(k in s.lower() for k in config["keywords"])), None)
                 if matched:
                     df = pd.read_excel(uploaded_file, sheet_name=matched)
-                    zone_col = config["dc_col"] if config["dc_col"] in df.columns else next((c for c in df.columns if any(x in c.upper() for x in ["DC", "ZONE", "DESC"])), df.columns[0])
-                    date_col = config["date_col"] if config["date_col"] in df.columns else next((c for c in df.columns if "DATE" in c.upper()), df.columns[1])
+                    zone_col = find_best_column(df, config["dc_patterns"])
+                    date_col = find_best_column(df, config["date_patterns"])
 
-                    df["CleanZone"] = df[zone_col].apply(clean_zone)
-                    app_dates = df[date_col].apply(parse_flexible_date)
-                    df["Days"] = (target_date - app_dates).dt.days
-                    df["Slab"] = df["Days"].apply(get_slab)
-                    df = df[df["Days"] >= 0]
+                    if zone_col and date_col:
+                        df["CleanZone"] = df[zone_col].apply(clean_zone)
+                        app_dates = df[date_col].apply(parse_flexible_date)
+                        df["Days"] = (target_date - app_dates).dt.days
+                        df["Slab"] = df["Days"].apply(get_slab)
+                        df = df[df["Days"] >= 0]
 
-                    counts = df["CleanZone"].value_counts()
-                    for z in zones:
-                        overall_summary.at[z, config["title"]] = counts.get(z, 0)
+                        counts = df["CleanZone"].value_counts()
+                        for z in zones:
+                            overall_summary.at[z, config["title"]] = counts.get(z, 0)
 
-                    processed_data_store[config["title"]] = df
+                        processed_data_store[config["title"]] = df
+                    else:
+                        processed_data_store[config["title"]] = None
                 else:
                     processed_data_store[config["title"]] = None
 
             # ----------------------------------------------------
-            # BUILD SHEET 1: URJAS Pendency (Over all)
+            # SHEET 1: URJAS Pendency (Over all)
             # ----------------------------------------------------
             num_cols = len(sheet_configs) + 2
             ws_overall.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_cols)
             t_cell = ws_overall.cell(row=1, column=1, value=f"URJAS Pendency (Over all) Dtd.({formatted_date_str})")
-            t_cell.fill = fill_yellow
-            t_cell.font = font_title
+            t_cell.fill = fill_yellow; t_cell.font = font_title
             t_cell.alignment = Alignment(horizontal="center", vertical="center")
 
             ws_overall.cell(row=2, column=1, value="Zone").fill = fill_yellow
@@ -201,11 +213,11 @@ if st.session_state["active_mode"] == "URJAS":
                 row_tot = 0
                 for c_idx, col_name in enumerate(overall_summary.columns):
                     val = int(overall_summary.at[zone, col_name])
-                    val_cell = ws_overall.cell(row=row_num, column=c_idx + 2, value=val if val > 0 else 0)
+                    val_cell = ws_overall.cell(row=row_num, column=c_idx + 2, value=val)
                     val_cell.font = font_body; val_cell.alignment = Alignment(horizontal="center", vertical="center"); val_cell.border = thin_border
                     row_tot += val
 
-                tot_cell = ws_overall.cell(row=row_num, column=num_cols, value=row_tot if row_tot > 0 else 0)
+                tot_cell = ws_overall.cell(row=row_num, column=num_cols, value=row_tot)
                 tot_cell.font = font_body; tot_cell.alignment = Alignment(horizontal="center", vertical="center"); tot_cell.border = thin_border
 
             tot_row_num = len(zones) + 3
@@ -214,15 +226,21 @@ if st.session_state["active_mode"] == "URJAS":
 
             for c_idx, col_name in enumerate(overall_summary.columns):
                 col_sum = int(overall_summary[col_name].sum())
-                col_sum_cell = ws_overall.cell(row=tot_row_num, column=c_idx + 2, value=col_sum if col_sum > 0 else 0)
+                col_sum_cell = ws_overall.cell(row=tot_row_num, column=c_idx + 2, value=col_sum)
                 col_sum_cell.fill = fill_yellow; col_sum_cell.font = font_total; col_sum_cell.alignment = Alignment(horizontal="center", vertical="center"); col_sum_cell.border = thin_border
 
             grand_sum_val = int(overall_summary.values.sum())
-            grand_sum_cell = ws_overall.cell(row=tot_row_num, column=num_cols, value=grand_sum_val if grand_sum_val > 0 else 0)
+            grand_sum_cell = ws_overall.cell(row=tot_row_num, column=num_cols, value=grand_sum_val)
             grand_sum_cell.fill = fill_yellow; grand_sum_cell.font = font_total; grand_sum_cell.alignment = Alignment(horizontal="center", vertical="center"); grand_sum_cell.border = thin_border
 
+            # Adjusting Column Widths automatically
+            for col in ws_overall.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                col_letter = get_column_letter(col[0].column)
+                ws_overall.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
             # ----------------------------------------------------
-            # BUILD SHEET 2: Time Wise Pendency (Sare Zones & Services)
+            # SHEET 2: Time Wise Pendency
             # ----------------------------------------------------
             ws_time = wb.create_sheet(title="Time Wise Pendency")
             ws_time.views.sheetView[0].showGridLines = True
@@ -273,7 +291,6 @@ if st.session_state["active_mode"] == "URJAS":
                     gt_cell.font = font_body; gt_cell.alignment = Alignment(horizontal="center", vertical="center"); gt_cell.border = thin_border
                     cat_grand_total += row_sum
 
-                # Adding Total Row for each category
                 tot_row = h_row + 1 + len(zones)
                 ws_time.cell(row=tot_row, column=start_col, value="").border = thin_border
                 
@@ -292,7 +309,7 @@ if st.session_state["active_mode"] == "URJAS":
             wb.save(output)
             output.seek(0)
 
-            st.success("🎉 URJAS Master File successfully generated for ALL ZONES & SERVICES!")
+            st.success("🎉 URJAS Master Report successfully generated with ALL ZONES data!")
             st.download_button(
                 label="📥 Download URJAS Master Complete Report (.xlsx)",
                 data=output,
@@ -327,7 +344,6 @@ else:
 
         df_raw = pd.read_excel(file, sheet_name=target_sheet, header=None)
 
-        # 1. Main Header Row find karo
         header_row_idx = 0
         for idx, row in df_raw.iterrows():
             row_vals = row.dropna().astype(str).str.strip().tolist()
@@ -335,14 +351,10 @@ else:
                 header_row_idx = idx
                 break
 
-        # 2. File read karo skipping top title rows
         df = pd.read_excel(file, sheet_name=target_sheet, skiprows=header_row_idx)
-
-        # Unnamed columns hatao aur headers ko upper/clean karo
         df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed", na=False)]
         df.columns = [str(c).strip().upper() for c in df.columns]
 
-        # 3. Filtering repetitive internal header rows
         if not df.empty:
             first_col = df.columns[0]
             second_col = df.columns[1] if len(df.columns) > 1 else first_col
@@ -385,7 +397,7 @@ else:
             if sno_col:
                 merged_df[sno_col] = range(1, len(merged_df) + 1)
 
-            st.success(f"✅ **Merged Successfully!** Repeat headers completely removed. Total Records: **{len(merged_df):,}**")
+            st.success(f"✅ **Merged Successfully!** Total Records: **{len(merged_df):,}**")
 
             zone_col = next((c for c in merged_df.columns if "ZONE" in c or "DC" in c), None)
 
