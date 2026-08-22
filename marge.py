@@ -145,6 +145,7 @@ if st.session_state["active_mode"] == "URJAS":
             overall_summary = pd.DataFrame(0, index=zones, columns=[s["title"] for s in sheet_configs])
             processed_data_store = {}
 
+            # Process data for all sheets
             for config in sheet_configs:
                 matched = next((s for s in available_sheets if any(k in s.lower() for k in config["keywords"])), None)
                 if matched:
@@ -166,6 +167,9 @@ if st.session_state["active_mode"] == "URJAS":
                 else:
                     processed_data_store[config["title"]] = None
 
+            # ----------------------------------------------------
+            # BUILD SHEET 1: URJAS Pendency (Over all)
+            # ----------------------------------------------------
             num_cols = len(sheet_configs) + 2
             ws_overall.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_cols)
             t_cell = ws_overall.cell(row=1, column=1, value=f"URJAS Pendency (Over all) Dtd.({formatted_date_str})")
@@ -217,7 +221,9 @@ if st.session_state["active_mode"] == "URJAS":
             grand_sum_cell = ws_overall.cell(row=tot_row_num, column=num_cols, value=grand_sum_val if grand_sum_val > 0 else 0)
             grand_sum_cell.fill = fill_yellow; grand_sum_cell.font = font_total; grand_sum_cell.alignment = Alignment(horizontal="center", vertical="center"); grand_sum_cell.border = thin_border
 
-            # Time Wise Sheet
+            # ----------------------------------------------------
+            # BUILD SHEET 2: Time Wise Pendency (Sare Zones & Services)
+            # ----------------------------------------------------
             ws_time = wb.create_sheet(title="Time Wise Pendency")
             ws_time.views.sheetView[0].showGridLines = True
 
@@ -226,8 +232,8 @@ if st.session_state["active_mode"] == "URJAS":
                 pvt = pd.DataFrame(0, index=zones, columns=slabs)
 
                 if df is not None and not df.empty:
-                    pvt = pd.pivot_table(df, index="CleanZone", columns="Slab", aggfunc="size", fill_value=0)
-                    pvt = pvt.reindex(index=zones, columns=slabs, fill_value=0)
+                    pvt_temp = pd.pivot_table(df, index="CleanZone", columns="Slab", aggfunc="size", fill_value=0)
+                    pvt = pvt_temp.reindex(index=zones, columns=slabs, fill_value=0)
 
                 col_side = idx % 2
                 row_group = idx // 2
@@ -244,24 +250,49 @@ if st.session_state["active_mode"] == "URJAS":
                     cell = ws_time.cell(row=h_row, column=start_col + c_idx, value=h_text)
                     cell.font = font_header; cell.fill = fill_yellow; cell.alignment = Alignment(horizontal="center", vertical="center"); cell.border = thin_border
 
+                slab_totals = {s: 0 for s in slabs}
+                cat_grand_total = 0
+
                 for r_idx, z_name in enumerate(zones):
                     curr_row = h_row + 1 + r_idx
-                    ws_time.cell(row=curr_row, column=start_col, value=r_idx + 1).border = thin_border
-                    ws_time.cell(row=curr_row, column=start_col + 1, value=z_name).border = thin_border
+                    sr_cell = ws_time.cell(row=curr_row, column=start_col, value=r_idx + 1)
+                    sr_cell.font = font_body; sr_cell.alignment = Alignment(horizontal="center", vertical="center"); sr_cell.border = thin_border
+                    
+                    zn_cell = ws_time.cell(row=curr_row, column=start_col + 1, value=z_name)
+                    zn_cell.font = font_body; zn_cell.alignment = Alignment(horizontal="left", vertical="center"); zn_cell.border = thin_border
 
                     row_sum = 0
                     for s_idx, slab in enumerate(slabs):
                         val = int(pvt.loc[z_name, slab]) if z_name in pvt.index and slab in pvt.columns else 0
-                        ws_time.cell(row=curr_row, column=start_col + 2 + s_idx, value=val if val > 0 else "").border = thin_border
+                        cell_val = ws_time.cell(row=curr_row, column=start_col + 2 + s_idx, value=val if val > 0 else "")
+                        cell_val.font = font_body; cell_val.alignment = Alignment(horizontal="center", vertical="center"); cell_val.border = thin_border
                         row_sum += val
+                        slab_totals[slab] += val
 
-                    ws_time.cell(row=curr_row, column=start_col + 7, value=row_sum if row_sum > 0 else "").border = thin_border
+                    gt_cell = ws_time.cell(row=curr_row, column=start_col + 7, value=row_sum if row_sum > 0 else "")
+                    gt_cell.font = font_body; gt_cell.alignment = Alignment(horizontal="center", vertical="center"); gt_cell.border = thin_border
+                    cat_grand_total += row_sum
+
+                # Adding Total Row for each category
+                tot_row = h_row + 1 + len(zones)
+                ws_time.cell(row=tot_row, column=start_col, value="").border = thin_border
+                
+                lbl_tot = ws_time.cell(row=tot_row, column=start_col + 1, value="Total")
+                lbl_tot.fill = fill_yellow; lbl_tot.font = font_total; lbl_tot.alignment = Alignment(horizontal="center", vertical="center"); lbl_tot.border = thin_border
+
+                for s_idx, slab in enumerate(slabs):
+                    s_tot = slab_totals[slab]
+                    s_cell = ws_time.cell(row=tot_row, column=start_col + 2 + s_idx, value=s_tot if s_tot > 0 else 0)
+                    s_cell.fill = fill_yellow; s_cell.font = font_total; s_cell.alignment = Alignment(horizontal="center", vertical="center"); s_cell.border = thin_border
+
+                final_cat_gt = ws_time.cell(row=tot_row, column=start_col + 7, value=cat_grand_total if cat_grand_total > 0 else 0)
+                final_cat_gt.fill = fill_yellow; final_cat_gt.font = font_total; final_cat_gt.alignment = Alignment(horizontal="center", vertical="center"); final_cat_gt.border = thin_border
 
             output = io.BytesIO()
             wb.save(output)
             output.seek(0)
 
-            st.success("🎉 URJAS Master File successfully generated!")
+            st.success("🎉 URJAS Master File successfully generated for ALL ZONES & SERVICES!")
             st.download_button(
                 label="📥 Download URJAS Master Complete Report (.xlsx)",
                 data=output,
@@ -304,23 +335,21 @@ else:
                 header_row_idx = idx
                 break
 
-        # 2. File read karo skiping top title rows
+        # 2. File read karo skipping top title rows
         df = pd.read_excel(file, sheet_name=target_sheet, skiprows=header_row_idx)
 
         # Unnamed columns hatao aur headers ko upper/clean karo
         df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed", na=False)]
         df.columns = [str(c).strip().upper() for c in df.columns]
 
-        # 3. Filtering repetitive internal header rows (Jo screenshot me beech me 'Group No', 'Consumer' aa raha hai)
+        # 3. Filtering repetitive internal header rows
         if not df.empty:
             first_col = df.columns[0]
             second_col = df.columns[1] if len(df.columns) > 1 else first_col
 
-            # Drop rows where data values repeat column header text
             df = df[~df[first_col].astype(str).str.upper().str.contains("GROUP NO|CONSUMER|S.NO|SL.NO", na=False)]
             df = df[~df[second_col].astype(str).str.upper().str.contains("GROUP NO|CONSUMER|NAME|ACCOUNT", na=False)]
 
-            # Total / Grand total rows hatao
             df = df[~df[first_col].astype(str).str.contains(r"TOTAL|GRAND TOTAL|RECORD", case=False, na=False)]
             df = df.dropna(how="all")
 
@@ -352,7 +381,6 @@ else:
         if combined_list:
             merged_df = pd.concat(combined_list, ignore_index=True, axis=0)
 
-            # Re-index Serial Number (1, 2, 3... N) continuously
             sno_col = next((c for c in merged_df.columns if "S.NO" in c or "SL.NO" in c or "S. NO" in c), None)
             if sno_col:
                 merged_df[sno_col] = range(1, len(merged_df) + 1)
