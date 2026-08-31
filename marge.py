@@ -46,7 +46,7 @@ if btn_merge:
 st.sidebar.markdown("---")
 if st.session_state["active_mode"] == "URJAS":
     st.sidebar.success("📌 Active: **URJAS Master Portal**")
-    st.sidebar.caption("👉 Create a Master Pendency & Time-Wise Dashboard by uploading any Excel raw dump or report file.")
+    st.sidebar.caption("👉 Create a Master Pendency & Time-Wise Dashboard by uploading a single Excel file.")
 else:
     st.sidebar.success("📌 Active: **Universal Merger Portal**")
     st.sidebar.caption("👉 Merge multiple Excel files and make separate sheets for each zone.")
@@ -77,17 +77,18 @@ if st.session_state["active_mode"] == "URJAS":
             ]
             slabs = ["0 - 3 days", "4 - 6 days", "7 - 15 days", "16 - 30 days", "MORE THAN 30 DAYS"]
 
+            # Broadened keywords and column patterns for seamless sheet matching
             sheet_configs = [
-                {"title": "NSC LT Application", "keywords": ["nsc lt", "nsc", "new service", "sheet1"], "dc_patterns": ["DC", "ZONE", "DCNAME"], "date_patterns": ["DATEOFAPPLICATION", "APP_DATE", "DATEOFAPP", "DATE"]},
-                {"title": "LT Load Change", "keywords": ["load change", "load_change", "lt load"], "dc_patterns": ["DCNAME", "DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE", "DATEOFAPPLICATION"]},
-                {"title": "Meter Replacement App", "keywords": ["meter replacement", "meter_rep", "replacement"], "dc_patterns": ["DC", "ZONE", "DCNAME"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
-                {"title": "Bill Correction App", "keywords": ["bill correction", "bill_corr", "correction"], "dc_patterns": ["DC", "ZONE", "DCNAME"], "date_patterns": ["DATEOFAPP", "DATE", "DATEOFAPPLICATION"]},
-                {"title": "Permanent Disconnection App", "keywords": ["permanent disconnection", "disconnection", "perm_disc", "permanent"], "dc_patterns": ["DC", "ZONE", "DESCRIPTION", "DCNAME"], "date_patterns": ["DATEOFAPP", "DATE", "DATEOFAPPLICATION"]},
-                {"title": "LT Name Transfer App", "keywords": ["name transfer", "name_trans", "transfer"], "dc_patterns": ["DC", "ZONE", "DCNAME"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
-                {"title": "LT Change Of Category", "keywords": ["change of category", "category_change", "category"], "dc_patterns": ["DC", "ZONE", "DCNAME"], "date_patterns": ["DATEOFAPP", "DATE", "DATEOFAPPLICATION"]},
-                {"title": "Cabel Replacement APP", "keywords": ["cabel", "cable", "cable_rep"], "dc_patterns": ["DC", "ZONE", "DCNAME"], "date_patterns": ["DATEOFAPP", "DATE", "DATEOFAPPLICATION"]},
-                {"title": "Transformer Fail App", "keywords": ["transformer", "transformer fail", "tf_fail"], "dc_patterns": ["DC", "ZONE", "DCNAME"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
-                {"title": "LT Line/Meter Shifting App", "keywords": ["shifting", "meter shifting", "line shifting"], "dc_patterns": ["DC", "ZONE", "DCNAME"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
+                {"title": "NSC LT Application", "keywords": ["nsc lt", "nsc", "new service"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPPLICATION", "APP_DATE", "DATE"]},
+                {"title": "LT Load Change", "keywords": ["load change", "load_change", "lt load"], "dc_patterns": ["DCNAME", "DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "Meter Replacement App", "keywords": ["meter replacement", "meter_rep", "replacement"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
+                {"title": "Bill Correction App", "keywords": ["bill correction", "bill_corr", "correction"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "Permanent Disconnection App", "keywords": ["permanent disconnection", "disconnection", "perm_disc"], "dc_patterns": ["DESCRIPTION", "DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "LT Name Transfer App", "keywords": ["name transfer", "name_trans", "transfer"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["AADHARNO", "DATEOFAPP", "DATE"]},
+                {"title": "LT Change Of Category", "keywords": ["change of category", "category_change", "category"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "Cabel Replacement APP", "keywords": ["cabel", "cable", "cable_rep"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPP", "DATE"]},
+                {"title": "Transformer Fail App", "keywords": ["transformer", "transformer fail", "tf_fail"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
+                {"title": "LT Line/Meter Shifting App", "keywords": ["shifting", "meter shifting", "line shifting"], "dc_patterns": ["DC", "ZONE"], "date_patterns": ["DATEOFAPPLICATION", "DATEOFAPP", "DATE"]},
             ]
 
             xls = pd.ExcelFile(uploaded_file)
@@ -143,13 +144,9 @@ if st.session_state["active_mode"] == "URJAS":
                 cols = list(df.columns)
                 for pat in patterns:
                     for col in cols:
-                        if pat.lower() == str(col).lower().strip():
+                        if pat.lower() in str(col).lower():
                             return col
-                for pat in patterns:
-                    for col in cols:
-                        if pat.lower() in str(col).lower().strip():
-                            return col
-                return None
+                return cols[0] if cols else None
 
             ws_overall = wb.active
             ws_overall.title = "URJAS Pendency (Over all)"
@@ -158,37 +155,26 @@ if st.session_state["active_mode"] == "URJAS":
             overall_summary = pd.DataFrame(0, index=zones, columns=[s["title"] for s in sheet_configs])
             processed_data_store = {}
 
-            # Single sheet fallback handling (for NSC PENDENCY LIST type single dumps)
-            is_single_dump_file = len(available_sheets) == 1 or all(s.lower().startswith("sheet") for s in available_sheets if s.strip())
-
+            # Processing all sheets dynamically
             for config in sheet_configs:
-                matched = None
-                if is_single_dump_file:
-                    if config["title"] == "NSC LT Application":
-                        matched = available_sheets[0]
-                else:
-                    matched = next((s for s in available_sheets if any(k in s.lower() for k in config["keywords"])), None)
-
+                matched = next((s for s in available_sheets if any(k in s.lower() for k in config["keywords"])), None)
                 if matched:
                     df = pd.read_excel(uploaded_file, sheet_name=matched)
-                    if not df.empty:
-                        zone_col = find_best_column(df, config["dc_patterns"])
-                        date_col = find_best_column(df, config["date_patterns"])
+                    zone_col = find_best_column(df, config["dc_patterns"])
+                    date_col = find_best_column(df, config["date_patterns"])
 
-                        if zone_col and date_col:
-                            df["CleanZone"] = df[zone_col].apply(clean_zone)
-                            app_dates = df[date_col].apply(parse_flexible_date)
-                            df["Days"] = (target_date - app_dates).dt.days
-                            df["Slab"] = df["Days"].apply(get_slab)
-                            df = df[df["Days"] >= 0]
+                    if zone_col and date_col:
+                        df["CleanZone"] = df[zone_col].apply(clean_zone)
+                        app_dates = df[date_col].apply(parse_flexible_date)
+                        df["Days"] = (target_date - app_dates).dt.days
+                        df["Slab"] = df["Days"].apply(get_slab)
+                        df = df[df["Days"] >= 0]
 
-                            counts = df["CleanZone"].value_counts()
-                            for z in zones:
-                                overall_summary.at[z, config["title"]] = counts.get(z, 0)
+                        counts = df["CleanZone"].value_counts()
+                        for z in zones:
+                            overall_summary.at[z, config["title"]] = counts.get(z, 0)
 
-                            processed_data_store[config["title"]] = df
-                        else:
-                            processed_data_store[config["title"]] = None
+                        processed_data_store[config["title"]] = df
                     else:
                         processed_data_store[config["title"]] = None
                 else:
@@ -247,6 +233,7 @@ if st.session_state["active_mode"] == "URJAS":
             grand_sum_cell = ws_overall.cell(row=tot_row_num, column=num_cols, value=grand_sum_val)
             grand_sum_cell.fill = fill_yellow; grand_sum_cell.font = font_total; grand_sum_cell.alignment = Alignment(horizontal="center", vertical="center"); grand_sum_cell.border = thin_border
 
+            # Adjusting Column Widths automatically
             for col in ws_overall.columns:
                 max_len = max(len(str(cell.value or '')) for cell in col)
                 col_letter = get_column_letter(col[0].column)
@@ -322,7 +309,7 @@ if st.session_state["active_mode"] == "URJAS":
             wb.save(output)
             output.seek(0)
 
-            st.success("🎉 URJAS Master Report successfully generated!")
+            st.success("🎉 URJAS Master Report successfully generated with ALL ZONES data!")
             st.download_button(
                 label="📥 Download URJAS Master Complete Report (.xlsx)",
                 data=output,
