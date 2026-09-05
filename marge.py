@@ -448,4 +448,4 @@ else:
 
             st.markdown("---")
             st.markdown("### 📋 Data Preview")
-            st.dataframe(merged_df, use_container_width=True)
+            st.dataframe(merged_df, use_conta)iner_width=True
